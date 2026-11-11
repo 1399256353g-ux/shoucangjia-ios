@@ -3,9 +3,8 @@
   "appName": "收藏夹",
   "webDir": "www",
   "server": {
-    "url": "http://192.168.2.4:8090",
     "cleartext": true,
-    "allowNavigation": ["192.168.2.4"]
+    "allowNavigation": ["*", "192.168.2.4", "localhost", "127.0.0.1"]
   },
   "ios": {
     "contentInset": "never",

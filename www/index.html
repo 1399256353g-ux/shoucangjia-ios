@@ -1,14 +1,132 @@
 <!doctype html>
-<html lang="zh-CN"><head>
+<html lang="zh-CN">
+<head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
 <meta name="theme-color" content="#000000">
 <title>收藏夹</title>
 <style>
-html,body{margin:0;height:100%;background:#000;color:#888;font-family:-apple-system,"PingFang SC",sans-serif;display:flex;align-items:center;justify-content:center}
-</style></head><body>
-<div id="boot">正在连接 NAS…</div>
+:root{color-scheme:dark}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:#000;color:#f2f2f2;font-family:-apple-system,"PingFang SC","Helvetica Neue",sans-serif}
+body{display:flex;overflow:hidden}
+.wrap{width:100%;max-width:430px;margin:auto;padding:calc(24px + env(safe-area-inset-top)) 24px calc(24px + env(safe-area-inset-bottom))}
+.logo{width:64px;height:64px;border-radius:18px;background:linear-gradient(135deg,#ff2d55,#ff375f 40%,#7b2dff);display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:700;margin:0 auto 18px;box-shadow:0 10px 30px rgba(255,45,85,.25)}
+h1{font-size:24px;line-height:1.2;margin:0 0 6px;text-align:center;letter-spacing:.5px}
+.sub{color:#8a8a8e;font-size:14px;text-align:center;margin:0 0 28px;line-height:1.5}
+label{display:block;font-size:13px;color:#9a9aa0;margin:0 0 7px;padding-left:2px}
+.field{margin-bottom:16px}
+input[type=url],input[type=password],input[type=text]{width:100%;height:50px;border-radius:12px;border:1px solid #2c2c2e;background:#141416;color:#f2f2f2;font-size:16px;padding:0 14px;outline:none;transition:border-color .15s}
+input:focus{border-color:#ff375f}
+input::placeholder{color:#5a5a5e}
+.row{display:flex;align-items:center;gap:8px;margin:2px 2px 22px;font-size:14px;color:#a1a1a6}
+.row input{width:18px;height:18px;accent-color:#ff375f;margin:0}
+button.primary{width:100%;height:52px;border:0;border-radius:14px;background:#ff375f;color:#fff;font-size:17px;font-weight:600;letter-spacing:.3px}
+button.primary:active{transform:scale(.985);opacity:.92}
+button.primary[disabled]{opacity:.55}
+button.link{width:100%;margin-top:16px;background:none;border:0;color:#8a8a8e;font-size:14px;padding:10px}
+.err{min-height:20px;color:#ff6961;font-size:13px;line-height:1.4;margin:0 2px 12px;text-align:center}
+.hint{color:#5a5a5e;font-size:12px;line-height:1.5;text-align:center;margin:18px 0 0}
+.ready{text-align:center}
+.ready .addr{display:inline-block;margin:4px 0 26px;padding:8px 14px;border-radius:10px;background:#141416;border:1px solid #2c2c2e;color:#a1a1a6;font-size:14px;word-break:break-all}
+.ready .big{font-size:20px;margin:0 0 4px}
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="logo">藏</div>
+
+  <section id="setup">
+    <h1>连接收藏夹</h1>
+    <p class="sub">填写 NAS 地址和访问口令，<br>直接进入，不再弹系统登录框。</p>
+    <div class="field">
+      <label for="addr">服务器地址</label>
+      <input id="addr" type="url" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="http://192.168.2.4:8090">
+    </div>
+    <div class="field">
+      <label for="key">访问口令</label>
+      <input id="key" type="password" autocomplete="current-password" placeholder="口令">
+    </div>
+    <label class="row"><input id="remember" type="checkbox" checked>记住口令（仅保存在本机）</label>
+    <p id="err" class="err" role="alert"></p>
+    <button id="go" class="primary">连接并进入</button>
+    <p class="hint">手机需与 NAS 在同一 Wi-Fi。地址示例：http://192.168.2.4:8090</p>
+  </section>
+
+  <section id="ready" class="ready hidden">
+    <h1 class="big">准备就绪</h1>
+    <p class="sub">上次连接的媒体库</p>
+    <div id="savedAddr" class="addr"></div>
+    <button id="enter" class="primary">进入收藏夹</button>
+    <button id="edit" class="link">修改服务器 / 口令</button>
+  </section>
+</div>
 <script>
-location.replace('http://192.168.2.4:8090');
+(function(){
+  var DEF='http://192.168.2.4:8090';
+  var $=function(id){return document.getElementById(id)};
+  var addrEl=$('addr'), keyEl=$('key'), remEl=$('remember'), errEl=$('err'), goEl=$('go');
+  function norm(u){u=(u||'').trim();if(!u)return '';if(!/^https?:\/\//i.test(u))u='http://'+u;return u.replace(/\/+$/,'')}
+  function err(t){errEl.textContent=t||''}
+  function savedAddr(){return localStorage.getItem('nas.addr')||''}
+  function savedKey(){return localStorage.getItem('nas.key')||''}
+  function show(id){$('setup').classList.toggle('hidden',id!=='setup');$('ready').classList.toggle('hidden',id!=='ready');err('')}
+  function busy(b,t){goEl.disabled=b;goEl.textContent=t||'连接并进入'}
+  function probe(addr,key){
+    var ctl=new AbortController(), timer=setTimeout(function(){ctl.abort()},8000);
+    return fetch(addr+'/api/auth?k='+encodeURIComponent(key),{cache:'no-store',signal:ctl.signal})
+      .then(function(r){
+        if(r.status===200)return r.json().then(function(j){return j&&j.ok?'ok':'bad'}).catch(function(){return 'bad'});
+        if(r.status===401)return 'bad';
+        return 'err';
+      })
+      .catch(function(){return 'err'})
+      .then(function(v){clearTimeout(timer);return v},function(){clearTimeout(timer);return 'err'});
+  }
+  function enter(addr,key){
+    err('');
+    probe(addr,key).then(function(r){
+      if(r==='ok'){
+        localStorage.setItem('nas.addr',addr);
+        if(remEl.checked)localStorage.setItem('nas.key',key);else localStorage.removeItem('nas.key');
+        location.replace(addr+'/?k='+encodeURIComponent(key));
+      }else if(r==='bad'){
+        busy(false);show('setup');addrEl.value=addr;keyEl.value=key;
+        err('口令不正确，请检查后重试');
+      }else{
+        busy(false);show('setup');addrEl.value=addr;keyEl.value=key;
+        err('无法连接服务器，请确认地址正确且手机与 NAS 在同一 Wi-Fi');
+      }
+    });
+  }
+  goEl.addEventListener('click',function(){
+    var addr=norm(addrEl.value), key=keyEl.value;
+    if(!addr){err('请填写服务器地址');return}
+    if(!/^https?:\/\/[^\/\s]+/i.test(addr)){err('地址格式不正确，例如 http://192.168.2.4:8090');return}
+    if(!key){err('请填写访问口令');return}
+    busy(true,'正在连接…');enter(addr,key);
+  });
+  keyEl.addEventListener('keydown',function(e){if(e.key==='Enter')goEl.click()});
+  $('enter').addEventListener('click',function(){
+    var addr=savedAddr(),key=savedKey();
+    if(addr&&key){enter(addr,key)}else{$('edit').click()}
+  });
+  $('edit').addEventListener('click',function(){
+    addrEl.value=savedAddr()||DEF;keyEl.value=savedKey();busy(false);show('setup');addrEl.focus();
+  });
+  (function init(){
+    var addr=savedAddr(), key=savedKey();
+    if(addr&&key){
+      $('savedAddr').textContent=addr;
+      show('ready');
+    }else{
+      addrEl.value=addr||DEF;
+      keyEl.value=key;
+      show('setup');
+    }
+  })();
+})();
 </script>
-</body></html>
+</body>
+</html>
