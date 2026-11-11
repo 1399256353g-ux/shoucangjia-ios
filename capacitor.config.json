@@ -1,0 +1,14 @@
+{
+  "appId": "com.zzx.shoucangjia",
+  "appName": "收藏夹",
+  "webDir": "www",
+  "server": {
+    "url": "http://192.168.2.4:8090",
+    "cleartext": true,
+    "allowNavigation": ["192.168.2.4"]
+  },
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#000000"
+  }
+}

@@ -1,0 +1,45 @@
+name: ios-build
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install deps
+        run: npm install
+      - name: Add iOS platform
+        run: npx cap add ios
+      - name: Patch Info.plist (ATS + LAN)
+        run: |
+          PL=ios/App/App/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity dict" "$PL" || true
+          /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity:NSAllowsArbitraryLoads bool true" "$PL" || true
+          /usr/libexec/PlistBuddy -c "Add :NSLocalNetworkUsageDescription string 访问局域网图库" "$PL" || true
+          /usr/libexec/PlistBuddy -c "Add :NSPhotoLibraryAddUsageDescription string 保存图片" "$PL" || true
+      - name: Pod install
+        run: |
+          cd ios/App
+          pod install --repo-update
+      - name: Build (unsigned)
+        run: |
+          cd ios/App
+          xcodebuild -workspace App.xcworkspace -scheme App -configuration Release -sdk iphoneos \
+            -derivedDataPath build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" | tail -40
+      - name: Package IPA
+        run: |
+          mkdir -p Payload
+          cp -R ios/App/build/Build/Products/Release-iphoneos/App.app Payload/
+          zip -qry ShouCangJia-unsigned.ipa Payload
+          ls -lh ShouCangJia-unsigned.ipa
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ShouCangJia-unsigned-ipa
+          path: ShouCangJia-unsigned.ipa
